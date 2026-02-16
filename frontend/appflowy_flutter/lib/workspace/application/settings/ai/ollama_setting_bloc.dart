@@ -227,7 +227,7 @@ extension on LocalAISettingPB {
   List<SettingItem> toInputItems() => [
         SettingItem(
           content: serverUrl,
-          hintText: 'http://localhost:11434',
+          hintText: 'http://localhost:11435',
           settingType: SettingType.serverUrl,
         ),
         SettingItem(

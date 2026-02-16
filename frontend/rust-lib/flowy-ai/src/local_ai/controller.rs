@@ -39,8 +39,8 @@ pub struct LocalAISetting {
 impl Default for LocalAISetting {
   fn default() -> Self {
     Self {
-      ollama_server_url: "http://localhost:11434".to_string(),
-      chat_model_name: "llama3.1:latest".to_string(),
+      ollama_server_url: "http://localhost:11435".to_string(),
+      chat_model_name: "claude-sonnet:latest".to_string(),
       embedding_model_name: "nomic-embed-text:latest".to_string(),
     }
   }
