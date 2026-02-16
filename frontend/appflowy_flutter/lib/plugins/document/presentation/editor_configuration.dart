@@ -405,6 +405,14 @@ Map<String, BlockComponentBuilder> _buildBlockComponentBuilderMap(
       context,
       configuration,
     ),
+    PdfViewerBlockKeys.type: _buildPdfViewerBlockComponentBuilder(
+      context,
+      configuration,
+    ),
+    ExcalidrawBlockKeys.type: _buildExcalidrawBlockComponentBuilder(
+      context,
+      configuration,
+    ),
     SubPageBlockKeys.type: _buildSubPageBlockComponentBuilder(
       context,
       configuration,
@@ -998,6 +1006,24 @@ FileBlockComponentBuilder _buildFileBlockComponentBuilder(
   BlockComponentConfiguration configuration,
 ) {
   return FileBlockComponentBuilder(
+    configuration: configuration,
+  );
+}
+
+PdfViewerBlockComponentBuilder _buildPdfViewerBlockComponentBuilder(
+  BuildContext context,
+  BlockComponentConfiguration configuration,
+) {
+  return PdfViewerBlockComponentBuilder(
+    configuration: configuration,
+  );
+}
+
+ExcalidrawBlockComponentBuilder _buildExcalidrawBlockComponentBuilder(
+  BuildContext context,
+  BlockComponentConfiguration configuration,
+) {
+  return ExcalidrawBlockComponentBuilder(
     configuration: configuration,
   );
 }
