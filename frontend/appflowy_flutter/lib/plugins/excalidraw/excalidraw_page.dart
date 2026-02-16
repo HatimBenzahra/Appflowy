@@ -29,7 +29,10 @@ class ExcalidrawPage extends StatefulWidget {
 
 class _ExcalidrawPageState extends State<ExcalidrawPage> {
   late final WebViewController _controller;
+  HttpServer? _server;
   bool _ready = false;
+  bool _loaded = false;
+  String? _error;
 
   @override
   void initState() {
@@ -37,9 +40,18 @@ class _ExcalidrawPageState extends State<ExcalidrawPage> {
     _initWebView();
   }
 
+  @override
+  void dispose() {
+    _server?.close(force: true);
+    super.dispose();
+  }
+
   void _initWebView() {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setOnConsoleMessage((message) {
+        debugPrint('Excalidraw JS [${message.level}]: ${message.message}');
+      })
       ..addJavaScriptChannel(
         'Flutter',
         onMessageReceived: (message) => _saveData(message.message),
@@ -49,6 +61,7 @@ class _ExcalidrawPageState extends State<ExcalidrawPage> {
         onMessageReceived: (_) {
           if (!_ready) {
             _ready = true;
+            if (mounted) setState(() => _loaded = true);
             _loadData();
           }
         },
@@ -56,18 +69,50 @@ class _ExcalidrawPageState extends State<ExcalidrawPage> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (_) {
-            // Fallback: if JS ready signal wasn't received after 5s,
-            // try loading data anyway.
-            Future.delayed(const Duration(seconds: 5), () {
+            // Fallback: if JS ready signal wasn't received after 15s,
+            // try loading data anyway (CDN can be slow).
+            Future.delayed(const Duration(seconds: 15), () {
               if (!_ready) {
                 _ready = true;
+                if (mounted) setState(() => _loaded = true);
                 _loadData();
               }
             });
           },
         ),
-      )
-      ..loadHtmlString(_excalidrawHtml);
+      );
+
+    // Serve the HTML via a local HTTP server so that WKWebView gets a proper
+    // http:// origin. Both loadHtmlString (about:blank) and loadFile (file://)
+    // block ES module dynamic imports from CDN due to CORS/security policies.
+    _startServerAndLoad();
+  }
+
+  Future<void> _startServerAndLoad() async {
+    try {
+      final server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0, // random available port
+      );
+      _server = server;
+
+      server.listen((request) {
+        request.response
+          ..headers.contentType = ContentType.html
+          ..headers.set('Access-Control-Allow-Origin', '*')
+          ..write(_excalidrawHtml)
+          ..close();
+      });
+
+      final url = 'http://127.0.0.1:${server.port}/';
+      debugPrint('Excalidraw: serving on $url');
+      await _controller.loadRequest(Uri.parse(url));
+    } catch (e) {
+      debugPrint('Excalidraw: failed to start local server: $e');
+      if (mounted) {
+        setState(() => _error = 'Failed to load Excalidraw editor: $e');
+      }
+    }
   }
 
   /// Read the optional imported file path from the view's extra JSON.
@@ -141,14 +186,60 @@ class _ExcalidrawPageState extends State<ExcalidrawPage> {
 
   @override
   Widget build(BuildContext context) {
-    return WebViewWidget(controller: _controller);
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            _error!,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.error,
+                ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: WebViewWidget(controller: _controller),
+        ),
+        if (!_loaded)
+          Positioned.fill(
+            child: Container(
+              color: Theme.of(context).colorScheme.surface,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Loading Excalidraw...',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.5),
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
   // ---------------------------------------------------------------------------
-  // Self-contained HTML that loads Excalidraw from CDN.
+  // Self-contained HTML that loads Excalidraw using UMD builds.
   //
-  // React 18 and Excalidraw are loaded as ES modules from esm.sh.
-  // The ?deps parameter ensures Excalidraw uses the same React instance.
+  // React 18, ReactDOM, and Excalidraw are loaded as UMD scripts from unpkg.
+  // UMD builds expose globals (React, ReactDOM, ExcalidrawLib) and work in
+  // any WebView context — unlike ES modules which fail in WKWebView.
   //
   // Data flow:
   //   JS → Flutter: Flutter.postMessage(jsonString)  (auto-save on change)
@@ -163,7 +254,8 @@ class _ExcalidrawPageState extends State<ExcalidrawPage> {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body, #root { width: 100%; height: 100%; overflow: hidden; }
-    #loading {
+    .excalidraw .App-menu_top .buttonList { flex-wrap: wrap; }
+    #loading-screen {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -173,7 +265,7 @@ class _ExcalidrawPageState extends State<ExcalidrawPage> {
       color: #888;
       font-size: 14px;
     }
-    #error {
+    #error-screen {
       display: none;
       align-items: center;
       justify-content: center;
@@ -186,82 +278,88 @@ class _ExcalidrawPageState extends State<ExcalidrawPage> {
       text-align: center;
     }
   </style>
+  <script>
+    window.EXCALIDRAW_ASSET_PATH = "https://unpkg.com/@excalidraw/excalidraw@0.17.6/dist/prod/";
+  </script>
+  <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@excalidraw/excalidraw@0.17.6/dist/excalidraw.production.min.js"></script>
 </head>
 <body>
   <div id="root">
-    <div id="loading">Loading Excalidraw…</div>
+    <div id="loading-screen">Loading Excalidraw…</div>
   </div>
-  <div id="error"></div>
-  <script type="module">
-    try {
-      const [ReactMod, ReactDOMMod, ExcalidrawMod] = await Promise.all([
-        import('https://esm.sh/react@18.2.0'),
-        import('https://esm.sh/react-dom@18.2.0/client'),
-        import('https://esm.sh/@excalidraw/excalidraw@0.17.6?deps=react@18.2.0,react-dom@18.2.0'),
-      ]);
-
-      const React = ReactMod.default || ReactMod;
-      const { createRoot } = ReactDOMMod;
-      const { Excalidraw } = ExcalidrawMod;
-      const { createElement } = React;
-
-      let excalidrawAPI = null;
-      let saveTimer = null;
-
-      function App() {
-        return createElement(Excalidraw, {
-          excalidrawAPI: function(api) { excalidrawAPI = api; },
-          onChange: function(elements, appState) {
-            clearTimeout(saveTimer);
-            saveTimer = setTimeout(function() {
-              try {
-                const data = JSON.stringify({
-                  elements: elements.map(function(el) {
-                    return Object.assign({}, el);
-                  }),
-                  appState: {
-                    viewBackgroundColor: appState.viewBackgroundColor,
-                    theme: appState.theme,
-                  },
-                });
-                Flutter.postMessage(data);
-              } catch (e) {
-                // Flutter channel not ready yet, ignore.
-              }
-            }, 2000);
-          },
-        });
-      }
-
-      const root = createRoot(document.getElementById('root'));
-      root.render(createElement(App));
-
-      // Called by Flutter to restore saved drawing data.
-      window.loadExcalidrawData = function(jsonStr) {
-        if (!excalidrawAPI || !jsonStr) return;
-        try {
-          const data = JSON.parse(jsonStr);
-          excalidrawAPI.updateScene({
-            elements: data.elements || [],
-            appState: data.appState || {},
-          });
-        } catch (e) {
-          console.error('Excalidraw: failed to load data:', e);
+  <div id="error-screen"></div>
+  <script>
+    (function() {
+      try {
+        if (typeof ExcalidrawLib === 'undefined') {
+          throw new Error('ExcalidrawLib not loaded. Check internet connection.');
         }
-      };
 
-      // Notify Flutter that Excalidraw is ready.
-      setTimeout(function() {
-        try { FlutterReady.postMessage('ready'); } catch(e) {}
-      }, 1500);
+        var Excalidraw = ExcalidrawLib.Excalidraw;
+        var createElement = React.createElement;
+        var excalidrawAPI = null;
+        var saveTimer = null;
 
-    } catch (e) {
-      document.getElementById('root').style.display = 'none';
-      const errEl = document.getElementById('error');
-      errEl.style.display = 'flex';
-      errEl.textContent = 'Failed to load Excalidraw: ' + e.message +
-        '. Please check your internet connection.';
-    }
+        function App() {
+          return createElement(
+            'div',
+            { style: { width: '100%', height: '100vh' } },
+            createElement(Excalidraw, {
+              excalidrawAPI: function(api) { excalidrawAPI = api; },
+              onChange: function(elements, appState) {
+                clearTimeout(saveTimer);
+                saveTimer = setTimeout(function() {
+                  try {
+                    var data = JSON.stringify({
+                      elements: elements.map(function(el) {
+                        return Object.assign({}, el);
+                      }),
+                      appState: {
+                        viewBackgroundColor: appState.viewBackgroundColor,
+                        theme: appState.theme,
+                      },
+                    });
+                    Flutter.postMessage(data);
+                  } catch (e) {
+                    // Flutter channel not ready yet, ignore.
+                  }
+                }, 2000);
+              },
+            })
+          );
+        }
+
+        var root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(createElement(App));
+
+        // Called by Flutter to restore saved drawing data.
+        window.loadExcalidrawData = function(jsonStr) {
+          if (!excalidrawAPI || !jsonStr) return;
+          try {
+            var data = JSON.parse(jsonStr);
+            excalidrawAPI.updateScene({
+              elements: data.elements || [],
+              appState: data.appState || {},
+            });
+          } catch (e) {
+            console.error('Excalidraw: failed to load data:', e);
+          }
+        };
+
+        // Notify Flutter that Excalidraw is ready.
+        setTimeout(function() {
+          try { FlutterReady.postMessage('ready'); } catch(e) {}
+        }, 1500);
+
+      } catch (e) {
+        document.getElementById('root').style.display = 'none';
+        var errEl = document.getElementById('error-screen');
+        errEl.style.display = 'flex';
+        errEl.textContent = 'Failed to load Excalidraw: ' + e.message;
+      }
+    })();
   </script>
 </body>
 </html>
