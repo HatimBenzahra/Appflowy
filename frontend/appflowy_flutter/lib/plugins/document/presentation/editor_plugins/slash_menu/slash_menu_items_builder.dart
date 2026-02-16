@@ -139,8 +139,6 @@ List<SelectionMenuItem> _defaultSlashMenuItems({
 
     // file
     fileSlashMenuItem,
-    pdfViewerSlashMenuItem,
-    excalidrawSlashMenuItem,
 
     // sub page
     subPageSlashMenuItem,
