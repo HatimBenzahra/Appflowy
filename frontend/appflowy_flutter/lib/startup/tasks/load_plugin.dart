@@ -3,6 +3,9 @@ import 'package:appflowy/plugins/database/calendar/calendar.dart';
 import 'package:appflowy/plugins/database/board/board.dart';
 import 'package:appflowy/plugins/database/grid/grid.dart';
 import 'package:appflowy/plugins/database_document/database_document_plugin.dart';
+import 'package:appflowy/plugins/excalidraw/excalidraw.dart';
+import 'package:appflowy/plugins/image_viewer/image_viewer.dart';
+import 'package:appflowy/plugins/pdf_viewer/pdf_viewer.dart';
 import 'package:appflowy/startup/plugin/plugin.dart';
 import 'package:appflowy/startup/startup.dart';
 import 'package:appflowy/plugins/blank/blank.dart';
@@ -39,6 +42,18 @@ class PluginLoadTask extends LaunchTask {
     registerPlugin(
       builder: AIChatPluginBuilder(),
       config: AIChatPluginConfig(),
+    );
+    registerPlugin(
+      builder: PdfViewerPluginBuilder(),
+      config: PdfViewerPluginConfig(),
+    );
+    registerPlugin(
+      builder: ExcalidrawPluginBuilder(),
+      config: ExcalidrawPluginConfig(),
+    );
+    registerPlugin(
+      builder: ImageViewerPluginBuilder(),
+      config: ImageViewerPluginConfig(),
     );
   }
 }

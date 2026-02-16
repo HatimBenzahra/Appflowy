@@ -1,11 +1,16 @@
+import 'dart:convert';
+
 import 'package:appflowy/generated/flowy_svgs.g.dart';
 import 'package:appflowy/generated/locale_keys.g.dart';
 import 'package:appflowy/plugins/document/document.dart';
 import 'package:appflowy/startup/plugin/plugin.dart';
 import 'package:appflowy/startup/startup.dart';
+import 'package:appflowy/workspace/application/view/view_service.dart';
 import 'package:appflowy/workspace/presentation/home/menu/sidebar/import/import_panel.dart';
 import 'package:appflowy/workspace/presentation/widgets/pop_up_action.dart';
+import 'package:appflowy_backend/protobuf/flowy-folder/view.pb.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:flowy_infra/file_picker/file_picker_service.dart';
 import 'package:flowy_infra_ui/flowy_infra_ui.dart';
 import 'package:flutter/material.dart';
 
@@ -87,7 +92,103 @@ class ViewAddButton extends StatelessWidget {
     BuildContext context,
     ViewAddButtonActionWrapper action,
   ) {
+    final pluginType = action.pluginBuilder.pluginType;
+
+    // File-based plugins: show file picker FIRST, then create views
+    if (pluginType == PluginType.pdfViewer ||
+        pluginType == PluginType.imageViewer ||
+        pluginType == PluginType.excalidraw) {
+      _handleFileBasedPlugin(context, action);
+      return;
+    }
+
+    // Standard plugins: delegate to the parent's onSelected handler
     onSelected(action.pluginBuilder, null, null, true, true);
+  }
+
+  Future<void> _handleFileBasedPlugin(
+    BuildContext context,
+    ViewAddButtonActionWrapper action,
+  ) async {
+    final pluginType = action.pluginBuilder.pluginType;
+
+    // Determine file picker configuration based on plugin type
+    late final FileType fileType;
+    late final List<String>? allowedExtensions;
+    late final String customViewType;
+    late final String filePathKey;
+    late final ViewLayoutPB layoutType;
+
+    switch (pluginType) {
+      case PluginType.pdfViewer:
+        fileType = FileType.custom;
+        allowedExtensions = ['pdf'];
+        customViewType = 'pdf_viewer';
+        filePathKey = 'pdf_path';
+        layoutType = ViewLayoutPB.PdfViewer;
+        break;
+      case PluginType.imageViewer:
+        fileType = FileType.custom;
+        allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+        customViewType = 'image_viewer';
+        filePathKey = 'image_path';
+        layoutType = ViewLayoutPB.ImageViewer;
+        break;
+      case PluginType.excalidraw:
+        fileType = FileType.custom;
+        allowedExtensions = ['excalidraw', 'json'];
+        customViewType = 'excalidraw';
+        filePathKey = 'excalidraw_file_path';
+        layoutType = ViewLayoutPB.Excalidraw;
+        break;
+      default:
+        return;
+    }
+
+    // Show file picker IMMEDIATELY — no view created yet
+    final result = await getIt<FilePickerService>().pickFiles(
+      dialogTitle: '',
+      type: fileType,
+      allowedExtensions: allowedExtensions,
+      allowMultiple: true,
+    );
+
+    // User cancelled → do nothing (no blank page created)
+    if (result == null || result.files.isEmpty) {
+      return;
+    }
+
+    final files = result.files
+        .where((file) => file.path != null && file.path!.isNotEmpty)
+        .toList();
+    if (files.isEmpty) return;
+
+    // Create one view per selected file, with extra set atomically
+    for (int i = 0; i < files.length; i++) {
+      final file = files[i];
+      final filePath = file.path!;
+      final fileName = _fileNameWithoutExtension(file.name);
+
+      // Build the extra JSON with both custom_view_type and file path
+      final extraJson = jsonEncode({
+        'custom_view_type': customViewType,
+        filePathKey: filePath,
+      });
+
+      await ViewBackendService.createView(
+        layoutType: layoutType,
+        parentViewId: parentViewId,
+        name: fileName,
+        openAfterCreate: i == 0, // Only open the first file
+        extra: extraJson,
+      );
+    }
+  }
+
+  String _fileNameWithoutExtension(String fileName) {
+    final dotIndex = fileName.lastIndexOf('.');
+    if (dotIndex <= 0) return fileName;
+    return fileName.substring(0, dotIndex);
   }
 
   void _showViewImportAction(

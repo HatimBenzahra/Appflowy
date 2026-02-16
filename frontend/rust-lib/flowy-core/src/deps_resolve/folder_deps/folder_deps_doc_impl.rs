@@ -2,8 +2,8 @@ use crate::deps_resolve::folder_deps::get_encoded_collab_v1_from_disk;
 use bytes::Bytes;
 use collab::entity::EncodedCollab;
 use collab_entity::CollabType;
-use collab_folder::hierarchy_builder::NestedViewBuilder;
 use collab_folder::ViewLayout;
+use collab_folder::hierarchy_builder::NestedViewBuilder;
 use flowy_document::entities::DocumentDataPB;
 use flowy_document::manager::DocumentManager;
 use flowy_document::parser::json::parser::JsonToDocumentParser;
@@ -117,7 +117,17 @@ impl FolderOperationHandler for DocumentFolderOperation {
     user_id: i64,
     params: CreateViewParams,
   ) -> Result<Option<EncodedCollab>, FlowyError> {
-    debug_assert_eq!(params.layout, ViewLayoutPB::Document);
+    debug_assert!(
+      matches!(
+        params.layout,
+        ViewLayoutPB::Document
+          | ViewLayoutPB::PdfViewer
+          | ViewLayoutPB::Excalidraw
+          | ViewLayoutPB::ImageViewer
+      ),
+      "unexpected document-like layout: {:?}",
+      params.layout
+    );
     let data = match params.initial_data {
       ViewData::DuplicateData(data) => Some(DocumentDataPB::try_from(data)?),
       ViewData::Data(data) => Some(DocumentDataPB::try_from(data)?),

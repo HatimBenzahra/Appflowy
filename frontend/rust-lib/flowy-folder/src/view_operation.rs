@@ -145,6 +145,9 @@ impl From<ViewLayoutPB> for ViewLayout {
       ViewLayoutPB::Board => ViewLayout::Board,
       ViewLayoutPB::Calendar => ViewLayout::Calendar,
       ViewLayoutPB::Chat => ViewLayout::Chat,
+      ViewLayoutPB::PdfViewer => ViewLayout::Document,
+      ViewLayoutPB::Excalidraw => ViewLayout::Document,
+      ViewLayoutPB::ImageViewer => ViewLayout::Document,
     }
   }
 }

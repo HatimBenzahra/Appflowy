@@ -4,10 +4,10 @@ use collab::entity::EncodedCollab;
 use collab_entity::CollabType;
 use collab_folder::{View, ViewLayout};
 use collab_plugins::local_storage::kv::KVTransactionDB;
+use flowy_database2::DatabaseManager;
 use flowy_database2::entities::DatabaseLayoutPB;
 use flowy_database2::services::share::csv::CSVFormat;
 use flowy_database2::template::{make_default_board, make_default_calendar, make_default_grid};
-use flowy_database2::DatabaseManager;
 use flowy_error::FlowyError;
 use flowy_folder::entities::{CreateViewParams, ViewLayoutPB};
 use flowy_folder::manager::FolderUser;
@@ -203,7 +203,11 @@ impl FolderOperationHandler for DatabaseFolderOperation {
           ViewLayoutPB::Board => DatabaseLayoutPB::Board,
           ViewLayoutPB::Calendar => DatabaseLayoutPB::Calendar,
           ViewLayoutPB::Grid => DatabaseLayoutPB::Grid,
-          ViewLayoutPB::Document | ViewLayoutPB::Chat => {
+          ViewLayoutPB::Document
+          | ViewLayoutPB::Chat
+          | ViewLayoutPB::PdfViewer
+          | ViewLayoutPB::Excalidraw
+          | ViewLayoutPB::ImageViewer => {
             return Err(
               FlowyError::invalid_data().with_context("Can't handle document layout type"),
             );

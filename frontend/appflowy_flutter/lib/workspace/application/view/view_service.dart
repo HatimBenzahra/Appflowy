@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:appflowy/plugins/document/presentation/editor_plugins/mention/mention_page_bloc.dart';
 import 'package:appflowy/plugins/trash/application/trash_service.dart';
@@ -44,7 +45,14 @@ class ViewBackendService {
     int? index,
     ViewSectionPB? section,
     final String? viewId,
-  }) {
+
+    /// The [extra] JSON string set on the CreateViewPayloadPB.extra field
+    /// (proto field 11) so it is persisted atomically during creation.
+    /// Used by custom view types (PDF, Excalidraw, Image) to store both the
+    /// custom_view_type marker AND the file path in a single operation,
+    /// eliminating the race condition of the previous async-update approach.
+    String? extra,
+  }) async {
     final payload = CreateViewPayloadPB.create()
       ..parentViewId = parentViewId
       ..name = name
@@ -68,7 +76,44 @@ class ViewBackendService {
       payload.viewId = viewId;
     }
 
-    return FolderEventCreateView(payload).send();
+    if (extra != null) {
+      payload.extra = extra;
+    }
+
+    final result = await FolderEventCreateView(payload).send();
+
+    // If no atomic extra was provided, fall back to the async update approach
+    // for custom view types so that the custom_view_type marker is persisted.
+    if (extra == null &&
+        (layoutType == ViewLayoutPB.PdfViewer ||
+            layoutType == ViewLayoutPB.Excalidraw ||
+            layoutType == ViewLayoutPB.ImageViewer)) {
+      await result.fold(
+        (view) async {
+          Map<String, dynamic> extJson = {};
+          try {
+            if (view.extra.isNotEmpty) {
+              extJson = jsonDecode(view.extra) as Map<String, dynamic>;
+            }
+          } catch (_) {}
+
+          extJson['custom_view_type'] =
+              layoutType == ViewLayoutPB.PdfViewer
+                  ? 'pdf_viewer'
+                  : layoutType == ViewLayoutPB.Excalidraw
+                      ? 'excalidraw'
+                      : 'image_viewer';
+
+          final updatePayload = UpdateViewPayloadPB()
+            ..viewId = view.id
+            ..extra = jsonEncode(extJson);
+          await FolderEventUpdateView(updatePayload).send();
+        },
+        (_) {},
+      );
+    }
+
+    return result;
   }
 
   /// The orphan view is meant to be a view that is not attached to any parent view. By default, this

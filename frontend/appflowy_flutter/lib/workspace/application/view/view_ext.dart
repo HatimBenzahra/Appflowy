@@ -10,6 +10,9 @@ import 'package:appflowy/plugins/database/grid/presentation/grid_page.dart';
 import 'package:appflowy/plugins/database/grid/presentation/mobile_grid_page.dart';
 import 'package:appflowy/plugins/database/tab_bar/tab_bar_view.dart';
 import 'package:appflowy/plugins/document/document.dart';
+import 'package:appflowy/plugins/excalidraw/excalidraw.dart';
+import 'package:appflowy/plugins/image_viewer/image_viewer.dart';
+import 'package:appflowy/plugins/pdf_viewer/pdf_viewer.dart';
 import 'package:appflowy/shared/icon_emoji_picker/icon_picker.dart';
 import 'package:appflowy/startup/plugin/plugin.dart';
 import 'package:appflowy/workspace/application/sidebar/space/space_bloc.dart';
@@ -60,6 +63,9 @@ extension MinimalViewExtension on FolderViewMinimalPB {
           ViewLayoutPB.Grid => FlowySvgs.icon_grid_s,
           ViewLayoutPB.Document => FlowySvgs.icon_document_s,
           ViewLayoutPB.Chat => FlowySvgs.chat_ai_page_s,
+          ViewLayoutPB.PdfViewer => FlowySvgs.file_s,
+          ViewLayoutPB.Excalidraw => FlowySvgs.notes_s,
+          ViewLayoutPB.ImageViewer => FlowySvgs.image_s,
           _ => FlowySvgs.icon_document_s,
         },
         size: size,
@@ -67,6 +73,21 @@ extension MinimalViewExtension on FolderViewMinimalPB {
 }
 
 extension ViewExtension on ViewPB {
+  /// Returns the real view layout, recovering PdfViewer/Excalidraw from the
+  /// extra JSON field (the backend converts these to Document internally).
+  ViewLayoutPB get resolvedLayout {
+    try {
+      if (extra.isNotEmpty) {
+        final ext = jsonDecode(extra) as Map<String, dynamic>;
+        final customType = ext['custom_view_type'] as String?;
+        if (customType == 'pdf_viewer') return ViewLayoutPB.PdfViewer;
+        if (customType == 'excalidraw') return ViewLayoutPB.Excalidraw;
+        if (customType == 'image_viewer') return ViewLayoutPB.ImageViewer;
+      }
+    } catch (_) {}
+    return layout;
+  }
+
   String get nameOrDefault =>
       name.isEmpty ? LocaleKeys.menuAppHeader_defaultNewPageName.tr() : name;
 
@@ -78,30 +99,36 @@ extension ViewExtension on ViewPB {
       ].contains(pluginType);
 
   Widget defaultIcon({Size? size}) => FlowySvg(
-        switch (layout) {
+        switch (resolvedLayout) {
           ViewLayoutPB.Board => FlowySvgs.icon_board_s,
           ViewLayoutPB.Calendar => FlowySvgs.icon_calendar_s,
           ViewLayoutPB.Grid => FlowySvgs.icon_grid_s,
           ViewLayoutPB.Document => FlowySvgs.icon_document_s,
           ViewLayoutPB.Chat => FlowySvgs.chat_ai_page_s,
+          ViewLayoutPB.PdfViewer => FlowySvgs.file_s,
+          ViewLayoutPB.Excalidraw => FlowySvgs.notes_s,
+          ViewLayoutPB.ImageViewer => FlowySvgs.image_s,
           _ => FlowySvgs.icon_document_s,
         },
         size: size,
       );
 
-  PluginType get pluginType => switch (layout) {
+  PluginType get pluginType => switch (resolvedLayout) {
         ViewLayoutPB.Board => PluginType.board,
         ViewLayoutPB.Calendar => PluginType.calendar,
         ViewLayoutPB.Document => PluginType.document,
         ViewLayoutPB.Grid => PluginType.grid,
         ViewLayoutPB.Chat => PluginType.chat,
+        ViewLayoutPB.PdfViewer => PluginType.pdfViewer,
+        ViewLayoutPB.Excalidraw => PluginType.excalidraw,
+        ViewLayoutPB.ImageViewer => PluginType.imageViewer,
         _ => throw UnimplementedError(),
       };
 
   Plugin plugin({
     Map<String, dynamic> arguments = const {},
   }) {
-    switch (layout) {
+    switch (resolvedLayout) {
       case ViewLayoutPB.Board:
       case ViewLayoutPB.Calendar:
       case ViewLayoutPB.Grid:
@@ -127,6 +154,12 @@ extension ViewExtension on ViewPB {
         );
       case ViewLayoutPB.Chat:
         return AIChatPagePlugin(view: this);
+      case ViewLayoutPB.PdfViewer:
+        return PdfViewerPlugin(view: this);
+      case ViewLayoutPB.Excalidraw:
+        return ExcalidrawPlugin(view: this);
+      case ViewLayoutPB.ImageViewer:
+        return ImageViewerPlugin(view: this);
     }
     throw UnimplementedError;
   }
@@ -145,7 +178,7 @@ extension ViewExtension on ViewPB {
         _ => throw UnimplementedError,
       };
 
-  FlowySvgData get iconData => layout.icon;
+  FlowySvgData get iconData => resolvedLayout.icon;
 
   bool get isSpace {
     try {
@@ -322,6 +355,9 @@ extension ViewLayoutExtension on ViewLayoutPB {
         ViewLayoutPB.Grid => FlowySvgs.icon_grid_s,
         ViewLayoutPB.Document => FlowySvgs.icon_document_s,
         ViewLayoutPB.Chat => FlowySvgs.chat_ai_page_s,
+        ViewLayoutPB.PdfViewer => FlowySvgs.file_s,
+        ViewLayoutPB.Excalidraw => FlowySvgs.notes_s,
+        ViewLayoutPB.ImageViewer => FlowySvgs.image_s,
         _ => FlowySvgs.icon_document_s,
       };
 
@@ -330,7 +366,10 @@ extension ViewLayoutExtension on ViewLayoutPB {
         ViewLayoutPB.Chat ||
         ViewLayoutPB.Grid ||
         ViewLayoutPB.Board ||
-        ViewLayoutPB.Calendar =>
+        ViewLayoutPB.Calendar ||
+        ViewLayoutPB.PdfViewer ||
+        ViewLayoutPB.Excalidraw ||
+        ViewLayoutPB.ImageViewer =>
           false,
         _ => throw Exception('Unknown layout type'),
       };
@@ -340,7 +379,12 @@ extension ViewLayoutExtension on ViewLayoutPB {
         ViewLayoutPB.Board ||
         ViewLayoutPB.Calendar =>
           true,
-        ViewLayoutPB.Document || ViewLayoutPB.Chat => false,
+        ViewLayoutPB.Document ||
+        ViewLayoutPB.Chat ||
+        ViewLayoutPB.PdfViewer ||
+        ViewLayoutPB.Excalidraw ||
+        ViewLayoutPB.ImageViewer =>
+          false,
         _ => throw Exception('Unknown layout type'),
       };
 
@@ -356,7 +400,13 @@ extension ViewLayoutExtension on ViewLayoutPB {
       };
 
   double get pluginHeight => switch (this) {
-        ViewLayoutPB.Document || ViewLayoutPB.Board || ViewLayoutPB.Chat => 450,
+        ViewLayoutPB.Document ||
+        ViewLayoutPB.Board ||
+        ViewLayoutPB.Chat ||
+        ViewLayoutPB.PdfViewer ||
+        ViewLayoutPB.Excalidraw ||
+        ViewLayoutPB.ImageViewer =>
+          450,
         ViewLayoutPB.Calendar => 650,
         ViewLayoutPB.Grid => double.infinity,
         _ => throw UnimplementedError(),

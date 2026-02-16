@@ -192,6 +192,9 @@ pub enum ViewLayoutPB {
   Board = 2,
   Calendar = 3,
   Chat = 4,
+  PdfViewer = 5,
+  Excalidraw = 6,
+  ImageViewer = 7,
 }
 
 impl ViewLayoutPB {
@@ -217,12 +220,17 @@ impl std::convert::From<ViewLayout> for ViewLayoutPB {
 
 impl From<client_api::entity::workspace_dto::ViewLayout> for ViewLayoutPB {
   fn from(val: client_api::entity::workspace_dto::ViewLayout) -> Self {
-    match val {
-      client_api::entity::workspace_dto::ViewLayout::Document => ViewLayoutPB::Document,
-      client_api::entity::workspace_dto::ViewLayout::Grid => ViewLayoutPB::Grid,
-      client_api::entity::workspace_dto::ViewLayout::Board => ViewLayoutPB::Board,
-      client_api::entity::workspace_dto::ViewLayout::Calendar => ViewLayoutPB::Calendar,
-      client_api::entity::workspace_dto::ViewLayout::Chat => ViewLayoutPB::Chat,
+    match val as i32 {
+      x if x == client_api::entity::workspace_dto::ViewLayout::Document as i32 => {
+        ViewLayoutPB::Document
+      },
+      x if x == client_api::entity::workspace_dto::ViewLayout::Grid as i32 => ViewLayoutPB::Grid,
+      x if x == client_api::entity::workspace_dto::ViewLayout::Board as i32 => ViewLayoutPB::Board,
+      x if x == client_api::entity::workspace_dto::ViewLayout::Calendar as i32 => {
+        ViewLayoutPB::Calendar
+      },
+      x if x == client_api::entity::workspace_dto::ViewLayout::Chat as i32 => ViewLayoutPB::Chat,
+      _ => ViewLayoutPB::Document,
     }
   }
 }
