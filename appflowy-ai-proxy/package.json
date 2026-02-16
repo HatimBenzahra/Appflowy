@@ -1,0 +1,14 @@
+{
+  "name": "appflowy-ai-proxy",
+  "version": "1.0.0",
+  "description": "Ollama-compatible proxy that routes AI requests to Claude/OpenAI via OAuth subscriptions",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.42",
+    "@openai/codex-sdk": "^0.101.0"
+  }
+}
